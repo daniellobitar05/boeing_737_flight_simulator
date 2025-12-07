@@ -145,7 +145,7 @@ Clean modular assembly program design
 
 📜 How to Run
 
-Open flightbob.asm in MARS
+Open Boeing737-Game.asm in MARS
 
 Open Bitmap Display → Configure settings
 
