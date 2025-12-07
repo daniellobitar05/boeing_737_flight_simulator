@@ -1,0 +1,1034 @@
+.data
+Welcome_Image: // You can find the welcome image txt hex 512x256 uploaded, just copy and paste it
+Mission_Complete_Image: // You can find the welcome image txt hex 512x256 uploaded, just copy and paste it
+
+
+la $a0, Welcome_Image
+jal Draw_Fullscreen_Image
+
+
+# =============================================================
+#   Boeing737 Game - FINAL VERSION with Score System
+# =============================================================
+
+.eqv DISPLAY_BASE   0x10010000
+.eqv DISPLAY_WIDTH  512
+.eqv DISPLAY_HEIGHT 256
+.eqv PLAYER_POS     0x1001F000
+.eqv MAX_HEALTH     3
+.eqv COLLISION_DIST 50
+
+.eqv W_KEY 119
+.eqv S_KEY 115
+.eqv SPACE_KEY 32
+
+.eqv AIRCRAFT_WIDTH 100
+.eqv AIRCRAFT_HEIGHT 50
+.eqv AIRCRAFT_X 30
+.eqv AIRCRAFT_Y_UP 20
+.eqv AIRCRAFT_Y_MID 100
+.eqv AIRCRAFT_Y_DOWN 180
+
+.eqv BIRD_SIZE 25
+.eqv BIRD_X 400
+.eqv BIRD_Y_UP 30
+.eqv BIRD_Y_MID 110
+.eqv BIRD_Y_DOWN 190
+
+.eqv HEALTH_SIZE 25
+.eqv HEALTH_X 400
+.eqv HEALTH_Y_UP 30
+.eqv HEALTH_Y_MID 110
+
+.eqv FORTRESS_WIDTH 25
+.eqv FORTRESS_HEIGHT 256
+.eqv FORTRESS_X 487
+.eqv FORTRESS_Y 0
+
+.eqv COLOR_SKY 0x87CEEB
+.eqv COLOR_AIRCRAFT 0xFF4500
+.eqv COLOR_BIRD 0xFF0000
+.eqv COLOR_HEALTH 0x00FF00
+.eqv COLOR_FORTRESS 0x808080
+.eqv COLOR_WHITE 0xFFFFFF
+.eqv COLOR_BLACK 0x000000
+
+# MIDI Sound Settings
+.eqv MIDI_INSTRUMENT 0
+.eqv MIDI_VOLUME 100
+.eqv MIDI_DURATION 500
+
+
+
+.text
+
+# =============================================================
+#   Main Entry
+# =============================================================
+main:
+    # Initialize score (lives) = 3
+    li   $t6, 3
+    li   $t9, AIRCRAFT_Y_MID
+    li   $s6, 1
+
+    # Show welcome screen
+    jal  display_welcome_screen
+
+    # Wait for SPACE
+    jal  wait_for_space
+    
+    # PLAY START SOUND! ?
+    jal  play_start_sound
+
+    # Clear screen and draw initial game scene
+    jal  draw_sky
+    
+    # Draw initial score
+    jal  draw_score
+    
+    # Draw initial aircraft (arrow)
+    li   $a0, AIRCRAFT_X
+    move $a2, $t9
+    jal  draw_arrow_aircraft
+
+    # Start game logic
+    jal  start_game
+
+    # Exit program
+    li   $v0, 10
+    syscall
+
+# =============================================================
+#   Display Functions
+# =============================================================
+display_welcome_screen:
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)
+    
+    li   $t0, DISPLAY_BASE
+    la   $t1, Welcome_Image
+    li   $t2, 0
+display_welcome_loop:
+    lw   $t3, 0($t1)
+    sw   $t3, 0($t0)
+    addi $t0, $t0, 4
+    addi $t1, $t1, 4
+    addi $t2, $t2, 1
+    li   $t4, 131072
+    blt  $t2, $t4, display_welcome_loop
+    
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr   $ra
+
+draw_sky:
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)
+    
+    li   $s0, COLOR_SKY
+    li   $a0, 0
+    li   $a1, 512
+    li   $a2, 0
+    li   $a3, 256
+    jal  draw_rectangle
+    
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr   $ra
+
+# =============================================================
+#   Draw Score Display (Top Right Corner)
+# =============================================================
+draw_score:
+    addi $sp, $sp, -8
+    sw   $ra, 0($sp)
+    sw   $t6, 4($sp)
+    
+    # Draw "Lives:" text background (white box)
+    li   $s0, COLOR_WHITE
+    li   $a0, 420
+    li   $a1, 80
+    li   $a2, 5
+    li   $a3, 20
+    jal  draw_rectangle
+    
+    # Draw the actual number of lives as boxes
+    # Each life = a small orange square
+    li   $s0, COLOR_AIRCRAFT
+    
+    # Draw based on current lives ($t6)
+    blez $t6, skip_all_lives
+    
+    # Life 1
+    li   $a0, 430
+    li   $a1, 15
+    li   $a2, 8
+    li   $a3, 15
+    jal  draw_rectangle
+    
+    li   $t5, 1
+    ble  $t6, $t5, skip_all_lives
+    
+    # Life 2
+    li   $a0, 450
+    li   $a1, 15
+    li   $a2, 8
+    li   $a3, 15
+    jal  draw_rectangle
+    
+    li   $t5, 2
+    ble  $t6, $t5, skip_all_lives
+    
+    # Life 3
+    li   $a0, 470
+    li   $a1, 15
+    li   $a2, 8
+    li   $a3, 15
+    jal  draw_rectangle
+    
+skip_all_lives:
+    lw   $t6, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 8
+    jr   $ra
+
+# =============================================================
+#   Draw Arrow Aircraft
+# =============================================================
+draw_arrow_aircraft:
+    addi $sp, $sp, -24
+    sw   $ra, 0($sp)
+    sw   $a0, 4($sp)
+    sw   $a1, 8($sp)
+    sw   $a2, 12($sp)
+    sw   $a3, 16($sp)
+    sw   $s0, 20($sp)
+    
+    move $s7, $a0
+    move $s6, $a2
+    
+    li   $s0, COLOR_AIRCRAFT
+    
+    # Arrow body
+    move $a0, $s7
+    li   $a1, 60
+    addi $a2, $s6, 15
+    li   $a3, 20
+    jal  draw_rectangle
+    
+    # Arrow head upper
+    addi $a0, $s7, 60
+    li   $a1, 15
+    addi $a2, $s6, 10
+    li   $a3, 10
+    jal  draw_rectangle
+    
+    # Arrow head middle
+    addi $a0, $s7, 75
+    li   $a1, 15
+    addi $a2, $s6, 15
+    li   $a3, 20
+    jal  draw_rectangle
+    
+    # Arrow head lower
+    addi $a0, $s7, 60
+    li   $a1, 15
+    addi $a2, $s6, 30
+    li   $a3, 10
+    jal  draw_rectangle
+    
+    # Upper fin
+    move $a0, $s7
+    li   $a1, 20
+    addi $a2, $s6, 5
+    li   $a3, 10
+    jal  draw_rectangle
+    
+    # Lower fin
+    move $a0, $s7
+    li   $a1, 20
+    addi $a2, $s6, 35
+    li   $a3, 10
+    jal  draw_rectangle
+    
+    lw   $s0, 20($sp)
+    lw   $a3, 16($sp)
+    lw   $a2, 12($sp)
+    lw   $a1, 8($sp)
+    lw   $a0, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 24
+    jr   $ra
+
+erase_arrow_aircraft:
+    addi $sp, $sp, -24
+    sw   $ra, 0($sp)
+    sw   $a0, 4($sp)
+    sw   $a1, 8($sp)
+    sw   $a2, 12($sp)
+    sw   $a3, 16($sp)
+    sw   $s0, 20($sp)
+    
+    move $s7, $a0
+    move $s6, $a2
+    
+    li   $s0, COLOR_SKY
+    
+    move $a0, $s7
+    li   $a1, 100
+    move $a2, $s6
+    li   $a3, 50
+    jal  draw_rectangle
+    
+    lw   $s0, 20($sp)
+    lw   $a3, 16($sp)
+    lw   $a2, 12($sp)
+    lw   $a1, 8($sp)
+    lw   $a0, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 24
+    jr   $ra
+
+draw_bird:
+    addi $sp, $sp, -20
+    sw   $ra, 0($sp)
+    sw   $a0, 4($sp)
+    sw   $a1, 8($sp)
+    sw   $a2, 12($sp)
+    sw   $a3, 16($sp)
+    
+    li   $s0, COLOR_BIRD
+    li   $a1, BIRD_SIZE
+    li   $a3, BIRD_SIZE
+    jal  draw_rectangle
+    
+    lw   $a3, 16($sp)
+    lw   $a2, 12($sp)
+    lw   $a1, 8($sp)
+    lw   $a0, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr   $ra
+
+draw_fortress:
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)
+    
+    li   $s0, COLOR_FORTRESS
+    li   $a0, FORTRESS_X
+    li   $a1, FORTRESS_WIDTH
+    li   $a2, FORTRESS_Y
+    li   $a3, FORTRESS_HEIGHT
+    jal  draw_rectangle
+    
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr   $ra
+
+draw_health_kit:
+    addi $sp, $sp, -20
+    sw   $ra, 0($sp)
+    sw   $a0, 4($sp)
+    sw   $a1, 8($sp)
+    sw   $a2, 12($sp)
+    sw   $a3, 16($sp)
+    
+    li   $s0, COLOR_HEALTH
+    li   $a1, HEALTH_SIZE
+    li   $a3, HEALTH_SIZE
+    jal  draw_rectangle
+    
+    lw   $a3, 16($sp)
+    lw   $a2, 12($sp)
+    lw   $a1, 8($sp)
+    lw   $a0, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr   $ra
+
+erase_health_kit:
+    addi $sp, $sp, -20
+    sw   $ra, 0($sp)
+    sw   $a0, 4($sp)
+    sw   $a1, 8($sp)
+    sw   $a2, 12($sp)
+    sw   $a3, 16($sp)
+    
+    li   $s0, COLOR_SKY
+    li   $a1, HEALTH_SIZE
+    li   $a3, HEALTH_SIZE
+    jal  draw_rectangle
+    
+    lw   $a3, 16($sp)
+    lw   $a2, 12($sp)
+    lw   $a1, 8($sp)
+    lw   $a0, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr   $ra
+
+# =============================================================
+#   Core Drawing Routine
+# =============================================================
+draw_rectangle:
+    addi $sp, $sp, -32
+    sw   $t0, 0($sp)
+    sw   $t1, 4($sp)
+    sw   $t2, 8($sp)
+    sw   $t3, 12($sp)
+    sw   $t4, 16($sp)
+    sw   $t5, 20($sp)
+    sw   $t6, 24($sp)
+    sw   $t7, 28($sp)
+    
+    blt  $a0, $zero, draw_rect_exit
+    bge  $a0, DISPLAY_WIDTH, draw_rect_exit
+    blt  $a2, $zero, draw_rect_exit
+    bge  $a2, DISPLAY_HEIGHT, draw_rect_exit
+    
+    add  $t5, $a0, $a1
+    add  $t6, $a2, $a3
+    
+    li   $t7, DISPLAY_WIDTH
+    ble  $t5, $t7, x_ok
+    move $t5, $t7
+x_ok:
+    li   $t7, DISPLAY_HEIGHT
+    ble  $t6, $t7, y_ok
+    move $t6, $t7
+y_ok:
+    
+    move $t1, $a2
+draw_y_loop:
+    bge  $t1, $t6, draw_rect_exit
+    
+    move $t0, $a0
+draw_x_loop:
+    bge  $t0, $t5, draw_x_done
+    
+    li   $t2, DISPLAY_BASE
+    move $t3, $t1
+    sll  $t3, $t3, 9
+    add  $t3, $t3, $t0
+    sll  $t3, $t3, 2
+    add  $t3, $t2, $t3
+    
+    sw   $s0, 0($t3)
+    
+    addi $t0, $t0, 1
+    j    draw_x_loop
+
+draw_x_done:
+    addi $t1, $t1, 1
+    j    draw_y_loop
+
+draw_rect_exit:
+    lw   $t7, 28($sp)
+    lw   $t6, 24($sp)
+    lw   $t5, 20($sp)
+    lw   $t4, 16($sp)
+    lw   $t3, 12($sp)
+    lw   $t2, 8($sp)
+    lw   $t1, 4($sp)
+    lw   $t0, 0($sp)
+    addi $sp, $sp, 32
+    jr   $ra
+
+# =============================================================
+#   Input Handling
+# =============================================================
+wait_for_space:
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)
+wait_space_loop:
+    li   $t0, 0xffff0000
+    lw   $t1, 0($t0)
+    andi $t1, $t1, 1
+    beqz $t1, wait_space_loop
+    li   $t2, 0xffff0004
+    lw   $t3, 0($t2)
+    beq  $t3, SPACE_KEY, exit_wait_space
+    j    wait_space_loop
+exit_wait_space:
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr   $ra
+
+check_input:
+    addi $sp, $sp, -20
+    sw   $ra, 0($sp)
+    sw   $t0, 4($sp)
+    sw   $t1, 8($sp)
+    sw   $t2, 12($sp)
+    sw   $t3, 16($sp)
+    
+    li   $t0, 0xffff0000
+    lw   $t1, 0($t0)
+    andi $t1, $t1, 1
+    beqz $t1, no_input_fixed
+    
+    li   $t2, 0xffff0004
+    lw   $t3, 0($t2)
+    
+    li   $t4, W_KEY
+    beq  $t3, $t4, move_up_fixed
+    
+    li   $t4, S_KEY
+    beq  $t3, $t4, move_down_fixed
+    
+no_input_fixed:
+    lw   $t3, 16($sp)
+    lw   $t2, 12($sp)
+    lw   $t1, 8($sp)
+    lw   $t0, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr   $ra
+
+move_up_fixed:
+    li   $t5, AIRCRAFT_Y_UP
+    beq  $t9, $t5, skip_move_up_fixed
+    
+    li   $a0, AIRCRAFT_X
+    move $a2, $t9
+    jal  erase_arrow_aircraft
+    
+    li   $t5, AIRCRAFT_Y_DOWN
+    bne  $t9, $t5, check_mid_up_fixed
+    li   $t9, AIRCRAFT_Y_MID
+    j    redraw_aircraft_up_fixed
+check_mid_up_fixed:
+    li   $t9, AIRCRAFT_Y_UP
+    
+redraw_aircraft_up_fixed:
+    li   $a0, AIRCRAFT_X
+    move $a2, $t9
+    jal  draw_arrow_aircraft
+    jal  draw_score
+    
+skip_move_up_fixed:
+    lw   $t3, 16($sp)
+    lw   $t2, 12($sp)
+    lw   $t1, 8($sp)
+    lw   $t0, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr   $ra
+
+move_down_fixed:
+    li   $t5, AIRCRAFT_Y_DOWN
+    beq  $t9, $t5, skip_move_down_fixed
+    
+    li   $a0, AIRCRAFT_X
+    move $a2, $t9
+    jal  erase_arrow_aircraft
+    
+    li   $t5, AIRCRAFT_Y_UP
+    bne  $t9, $t5, check_mid_down_fixed
+    li   $t9, AIRCRAFT_Y_MID
+    j    redraw_aircraft_down_fixed
+check_mid_down_fixed:
+    li   $t9, AIRCRAFT_Y_DOWN
+    
+redraw_aircraft_down_fixed:
+    li   $a0, AIRCRAFT_X
+    move $a2, $t9
+    jal  draw_arrow_aircraft
+    jal  draw_score
+    
+skip_move_down_fixed:
+    lw   $t3, 16($sp)
+    lw   $t2, 12($sp)
+    lw   $t1, 8($sp)
+    lw   $t0, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr   $ra
+
+# =============================================================
+#   Delay - MUCH FASTER!
+# =============================================================
+add_delay:
+    li   $t0, 8000
+delay_loop:
+    subi $t0, $t0, 1
+    bnez $t0, delay_loop
+    jr   $ra
+
+# =============================================================
+#   Collision Detection
+#   Check if aircraft hits bird or health kit
+#   Input: $a0=object_x, $a1=object_y
+#   Returns: $v0=1 if collision, 0 otherwise
+# =============================================================
+check_collision:
+    addi $sp, $sp, -8
+    sw   $t5, 0($sp)
+    sw   $t4, 4($sp)
+    
+    # Aircraft is at AIRCRAFT_X and $t9 (y position)
+    # Check if object X is near aircraft (30-130 range)
+    li   $t5, AIRCRAFT_X
+    addi $t5, $t5, -30
+    blt  $a0, $t5, no_collision_fixed
+    
+    li   $t5, AIRCRAFT_X
+    addi $t5, $t5, 100
+    bgt  $a0, $t5, no_collision_fixed
+    
+    # Check Y position (within 40 pixels)
+    sub  $t5, $a1, $t9
+    abs  $t5, $t5
+    li   $t4, 40
+    bgt  $t5, $t4, no_collision_fixed
+    
+    # Collision detected!
+    li   $v0, 1
+    lw   $t4, 4($sp)
+    lw   $t5, 0($sp)
+    addi $sp, $sp, 8
+    jr   $ra
+    
+no_collision_fixed:
+    li   $v0, 0
+    lw   $t4, 4($sp)
+    lw   $t5, 0($sp)
+    addi $sp, $sp, 8
+    jr   $ra
+
+# =============================================================
+#   Game Logic - 4 ROUNDS with Collision Detection!
+# =============================================================
+start_game:
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)
+
+    # ROUND 1 (2 birds only)
+    li   $s4, BIRD_Y_UP
+    li   $s5, BIRD_Y_MID
+    li   $s2, 0
+    jal  bird_wave
+    
+    # Check if game over
+    blez $t6, game_over
+    
+    # ROUND 2 (2 birds + green at UP)
+    li   $s4, BIRD_Y_MID
+    li   $s5, BIRD_Y_DOWN
+    li   $s2, 1
+    jal  bird_wave
+    
+    blez $t6, game_over
+    
+    # ROUND 3 (2 birds + green at MID)
+    li   $s4, BIRD_Y_UP
+    li   $s5, BIRD_Y_DOWN
+    li   $s2, 2
+    jal  bird_wave
+    
+    blez $t6, game_over
+    
+    # ROUND 4 (2 birds only)
+    li   $s4, BIRD_Y_UP
+    li   $s5, BIRD_Y_MID
+    li   $s2, 0
+    jal  bird_wave
+    
+    blez $t6, game_over
+    
+    # All rounds complete! Clear screen
+    jal  draw_sky
+    jal  draw_score
+    li   $a0, AIRCRAFT_X
+    move $a2, $t9
+    jal  draw_arrow_aircraft
+    jal  draw_fortress
+    
+    # Fly to fortress automatically
+    jal  aircraft_to_fortress
+    
+    # PLAY END SOUND! ?
+    jal  play_end_sound
+    
+    # Show mission complete
+    jal  display_mission_complete
+    j    end_game
+
+game_over:
+    # Player lost all lives - could add game over screen here
+    jal  display_mission_complete
+
+end_game:
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr   $ra
+
+# =============================================================
+#   Bird Wave with 3 OBJECTS! (FIXED - ONE HIT ONLY!)
+#   $s2 = 1 (green at UP), 2 (green at MID), 3 (green at DOWN)
+# =============================================================
+bird_wave:
+    addi $sp, $sp, -56
+    sw   $ra, 0($sp)
+    sw   $s3, 4($sp)
+    sw   $s4, 8($sp)
+    sw   $s5, 12($sp)
+    sw   $s2, 16($sp)
+    sw   $t7, 20($sp)
+    sw   $t8, 24($sp)
+    sw   $a0, 28($sp)
+    sw   $a1, 32($sp)
+    sw   $a2, 36($sp)
+    sw   $v0, 40($sp)
+    sw   $s0, 44($sp)
+    sw   $s1, 48($sp)
+    sw   $t4, 52($sp)
+    
+    li   $t7, BIRD_X
+    li   $t8, HEALTH_X
+    li   $s3, 16          # More iterations for faster movement!
+    
+    # Collision flags: 0 = not hit yet, 1 = already hit
+    li   $s0, 0    # Bird 1 collision flag
+    li   $s1, 0    # Bird 2 collision flag
+    li   $t4, 0    # Health collision flag
+
+bird_loop:
+    # Check input FIRST - this is crucial!
+    jal  check_input
+    
+    # Draw bird 1
+    move $a0, $t7
+    move $a2, $s4
+    jal  draw_bird
+    
+    # Draw bird 2
+    move $a0, $t7
+    move $a2, $s5
+    jal  draw_bird
+    
+    # Draw health kit based on $s2 position
+    move $a0, $t8
+    li   $t5, 1
+    beq  $s2, $t5, health_at_up
+    li   $t5, 2
+    beq  $s2, $t5, health_at_mid
+    li   $t5, 3
+    beq  $s2, $t5, health_at_down
+    j    skip_health_draw
+
+health_at_up:
+    li   $a2, HEALTH_Y_UP
+    jal  draw_health_kit
+    j    skip_health_draw
+
+health_at_mid:
+    li   $a2, HEALTH_Y_MID
+    jal  draw_health_kit
+    j    skip_health_draw
+
+health_at_down:
+    li   $a2, BIRD_Y_DOWN
+    jal  draw_health_kit
+    
+skip_health_draw:
+    jal  add_delay
+    
+    # CHECK COLLISIONS ONLY IF NOT ALREADY HIT!
+    # Check bird 1
+    beqz $s0, check_bird1_collision
+    j    skip_bird1_check
+check_bird1_collision:
+    move $a0, $t7
+    move $a1, $s4
+    jal  check_collision
+    beqz $v0, skip_bird1_check
+    subi $t6, $t6, 1
+    jal  draw_score
+    li   $s0, 1
+    
+skip_bird1_check:
+    # Check bird 2
+    beqz $s1, check_bird2_collision
+    j    skip_bird2_check
+check_bird2_collision:
+    move $a0, $t7
+    move $a1, $s5
+    jal  check_collision
+    beqz $v0, skip_bird2_check
+    subi $t6, $t6, 1
+    jal  draw_score
+    li   $s1, 1
+    
+skip_bird2_check:
+    # Check health kit
+    bnez $t4, skip_health_check
+    move $a0, $t8
+    
+    li   $t5, 1
+    beq  $s2, $t5, health_collision_up
+    li   $t5, 2
+    beq  $s2, $t5, health_collision_mid
+    li   $t5, 3
+    beq  $s2, $t5, health_collision_down
+    j    skip_health_check
+
+health_collision_up:
+    li   $a1, HEALTH_Y_UP
+    j    do_health_check
+health_collision_mid:
+    li   $a1, HEALTH_Y_MID
+    j    do_health_check
+health_collision_down:
+    li   $a1, BIRD_Y_DOWN
+
+do_health_check:
+    jal  check_collision
+    beqz $v0, skip_health_check
+    addi $t6, $t6, 1
+    li   $t5, 5
+    ble  $t6, $t5, health_gained
+    li   $t6, 5
+health_gained:
+    jal  draw_score
+    li   $t4, 1
+    
+skip_health_check:
+    # Erase birds
+    move $a0, $t7
+    move $a2, $s4
+    jal  erase_bird
+    
+    move $a0, $t7
+    move $a2, $s5
+    jal  erase_bird
+    
+    # Erase health kit
+    move $a0, $t8
+    li   $t5, 1
+    beq  $s2, $t5, health_erase_up
+    li   $t5, 2
+    beq  $s2, $t5, health_erase_mid
+    li   $t5, 3
+    beq  $s2, $t5, health_erase_down
+    j    skip_health_erase
+
+health_erase_up:
+    li   $a2, HEALTH_Y_UP
+    jal  erase_health_kit
+    j    skip_health_erase
+health_erase_mid:
+    li   $a2, HEALTH_Y_MID
+    jal  erase_health_kit
+    j    skip_health_erase
+health_erase_down:
+    li   $a2, BIRD_Y_DOWN
+    jal  erase_health_kit
+    
+skip_health_erase:
+    # Move left FASTER!
+    subi $t7, $t7, 35
+    subi $t8, $t8, 35
+    
+    # Redraw aircraft and score
+    li   $a0, AIRCRAFT_X
+    move $a2, $t9
+    jal  draw_arrow_aircraft
+    jal  draw_score
+    
+    # Loop
+    subi $s3, $s3, 1
+    bgtz $s3, bird_loop
+
+    lw   $t4, 52($sp)
+    lw   $s1, 48($sp)
+    lw   $s0, 44($sp)
+    lw   $v0, 40($sp)
+    lw   $a2, 36($sp)
+    lw   $a1, 32($sp)
+    lw   $a0, 28($sp)
+    lw   $t8, 24($sp)
+    lw   $t7, 20($sp)
+    lw   $s2, 16($sp)
+    lw   $s5, 12($sp)
+    lw   $s4, 8($sp)
+    lw   $s3, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 56
+    jr   $ra
+
+erase_bird:
+    addi $sp, $sp, -20
+    sw   $ra, 0($sp)
+    sw   $a0, 4($sp)
+    sw   $a1, 8($sp)
+    sw   $a2, 12($sp)
+    sw   $a3, 16($sp)
+    
+    li   $s0, COLOR_SKY
+    li   $a1, BIRD_SIZE
+    li   $a3, BIRD_SIZE
+    jal  draw_rectangle
+    
+    lw   $a3, 16($sp)
+    lw   $a2, 12($sp)
+    lw   $a1, 8($sp)
+    lw   $a0, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr   $ra
+
+# =============================================================
+#   Aircraft to Fortress - AUTOMATIC STRAIGHT LINE TO TARGET!
+# =============================================================
+aircraft_to_fortress:
+    addi $sp, $sp, -24
+    sw   $ra, 0($sp)
+    sw   $s1, 4($sp)
+    sw   $t0, 8($sp)
+    sw   $a0, 12($sp)
+    sw   $a2, 16($sp)
+    sw   $t9, 20($sp)
+    
+    # Start position
+    li   $t0, AIRCRAFT_X
+    
+    # Target is the fortress at x = 487
+    # We need to fly from 30 to 487 (distance = 457 pixels)
+    # Let's do it in steps
+    
+fly_to_target_loop:
+    # Check if we reached the target
+    li   $t5, 430          # Stop before fortress (487 - 57 = 430)
+    bge  $t0, $t5, reached_fortress
+    
+    # Erase old position
+    move $a0, $t0
+    move $a2, $t9
+    jal  erase_arrow_aircraft
+    
+    # Move right by 45 pixels each frame
+    addi $t0, $t0, 45
+    
+    # Draw new position
+    move $a0, $t0
+    move $a2, $t9
+    jal  draw_arrow_aircraft
+    
+    # Redraw fortress
+    jal  draw_fortress
+    
+    # Redraw score
+    jal  draw_score
+    
+    # Small delay for smooth animation
+    jal  add_delay
+    
+    # Continue flying
+    j    fly_to_target_loop
+
+reached_fortress:
+    # Final position - draw arrow at the fortress
+    li   $t0, 430
+    move $a0, $t0
+    move $a2, $t9
+    jal  erase_arrow_aircraft
+    jal  draw_arrow_aircraft
+    jal  draw_fortress
+    jal  draw_score
+
+    lw   $t9, 20($sp)
+    lw   $a2, 16($sp)
+    lw   $a0, 12($sp)
+    lw   $t0, 8($sp)
+    lw   $s1, 4($sp)
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 24
+    jr   $ra
+
+# =============================================================
+#   Sound Effects
+# =============================================================
+play_start_sound:
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)
+    
+    # Play epic start melody (C-E-G chord progression)
+    li   $v0, 31           # MIDI out syscall
+    li   $a0, 60           # Middle C
+    li   $a1, MIDI_DURATION
+    li   $a2, MIDI_INSTRUMENT
+    li   $a3, MIDI_VOLUME
+    syscall
+    
+    li   $a0, 64           # E
+    syscall
+    
+    li   $a0, 67           # G
+    syscall
+    
+    li   $a0, 72           # High C
+    li   $a1, 1000         # Longer final note
+    syscall
+    
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr   $ra
+
+play_end_sound:
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)
+    
+    # Play victory fanfare (ascending scale)
+    li   $v0, 31
+    li   $a1, 300
+    li   $a2, MIDI_INSTRUMENT
+    li   $a3, MIDI_VOLUME
+    
+    li   $a0, 60           # C
+    syscall
+    
+    li   $a0, 62           # D
+    syscall
+    
+    li   $a0, 64           # E
+    syscall
+    
+    li   $a0, 65           # F
+    syscall
+    
+    li   $a0, 67           # G
+    syscall
+    
+    li   $a0, 69           # A
+    syscall
+    
+    li   $a0, 71           # B
+    syscall
+    
+    li   $a0, 72           # High C
+    li   $a1, 1500         # Long victory note!
+    syscall
+    
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr   $ra
+display_mission_complete:
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)
+    
+    li   $t0, DISPLAY_BASE
+    la   $t1, Mission_Complete_Image
+    li   $t2, 0
+mission_complete_loop:
+    lw   $t3, 0($t1)
+    sw   $t3, 0($t0)
+    addi $t0, $t0, 4
+    addi $t1, $t1, 4
+    addi $t2, $t2, 1
+    li   $t4, 131072
+    blt  $t2, $t4, mission_complete_loop
+    
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr   $ra
